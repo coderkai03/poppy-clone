@@ -2,7 +2,7 @@
   "name": "poppy-clone",
   "version": "0.1.0",
   "private": true,
-  "description": "Canvas-based multimodal content workspace. Next.js canvas + local FastAPI ingestion engine.",
+  "description": "Canvas-based multimodal content workspace. Next.js canvas + local FastAPI engine for ingestion, transcription and LLM generation.",
   "scripts": {
     "dev": "npm --prefix web run dev",
     "build": "npm --prefix web run build",

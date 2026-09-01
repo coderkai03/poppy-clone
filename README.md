@@ -29,6 +29,38 @@ paste URL → MediaSourceNode
 
 Canvas state lives in `localStorage`, so a reload restores your nodes and edges.
 
+### API surface
+
+Both Next routes are proxies. Neither holds a model credential, and neither talks to a
+model — that is the engine's job, because the engine is the half that sits next to the GPU.
+
+| Endpoint | Auth | Returns | Notes |
+| --- | --- | --- | --- |
+| `POST /api/ingest` | none (browser) | JSON | Validates the URL, forwards to engine `/ingest`. 60s timeout. |
+| `POST /api/llm` | none (browser) | `text/event-stream` | Validates the body, forwards to engine `/llm`, pipes the SSE body through unmodified. |
+| `POST /ingest` | `x-secret-key` | JSON | Captions or Whisper transcription. |
+| `POST /llm` | `x-secret-key` | `text/event-stream` | Builds the prompt, streams from the local model. |
+| `GET /health` | none | JSON | Whisper + LLM config, incl. the resolved `llm_base_url` / `llm_model`. |
+
+The proxies exist for exactly one reason: `MAC_API_SECRET` must not reach the browser. They
+add no model logic — the system prompt, transcript trimming and context cap all live in
+`engine/services/llm.py`.
+
+**SSE frame format** (produced by the engine, parsed by `web/hooks/useGenerationStream.ts`):
+
+```
+: <2048 spaces>            ← comment-line padding; WebKit buffers the first 1024 bytes
+data: {"t": "## Sum"}      ← one content delta per frame
+data: {"t": "mary\n\n"}
+event: done                ← success terminator
+data: {}
+```
+
+An `event: error` frame with `{"error": "..."}` replaces `done` if the model fails
+*mid-stream*. Failures that happen *before* the first byte — server down, no model loaded,
+bad model id — are real HTTP statuses instead (`502`), so the node shows an actionable
+message rather than an empty card.
+
 ## Prerequisites
 
 - Node.js 20.9+ (Next 16 minimum)
@@ -63,20 +95,27 @@ is a 401.
 
 ## Running
 
-Two terminals, from the repo root:
+Three processes. From the repo root:
 
 ```bash
 npm run dev          # Next.js on http://localhost:3000
 npm run dev:engine   # FastAPI on http://localhost:8000
+lms server start     # model server on :1234 — see Local model below
 ```
 
 Then open <http://localhost:3000/canvas>.
+
+Ingestion works without the model server; only generation needs it. If it is down, the
+generation node shows a `502` telling you so.
 
 On one machine, leave `MAC_MINI_URL=http://localhost:8000` — no tunnel needed.
 
 ### Running the engine on a separate machine
 
-Expose it with a free Cloudflare quick tunnel:
+**The model server belongs on the engine's machine, not the web machine** — the engine
+reaches it over `localhost`, so it has to sit next to the GPU doing the work.
+
+Expose the engine with a free Cloudflare quick tunnel:
 
 ```bash
 npm run tunnel       # or: engine/run_tunnel.sh  /  engine/run_tunnel.ps1
@@ -93,7 +132,7 @@ Copy the printed `https://<something>.trycloudflare.com` URL into `MAC_MINI_URL`
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Next dev server |
-| `npm run dev:engine` | uvicorn with reload |
+| `npm run dev:engine` | uvicorn with reload (serves `/ingest`, `/llm`, `/health`) |
 | `npm run build` | Production build (Turbopack) |
 | `npm run typecheck` | `next typegen && tsc --noEmit` |
 | `npm run lint` | ESLint flat config |
@@ -125,6 +164,7 @@ never talks to a model.
 | `LOCAL_LLM_MAX_TOKENS` | Caps one generation. Default 1024. |
 | `LOCAL_LLM_TEMPERATURE` | Default 0.6. |
 | `LOCAL_LLM_PROMPT_SUFFIX` | Default `/no_think`. Suppresses chain-of-thought — see [reasoning models](#reasoning-models). Blank it for a non-reasoning model. |
+| `LOCAL_LLM_API_KEY` | Only needed if your server enforces one (e.g. vLLM `--api-key`). LM Studio and `llama-server` ignore it. |
 
 The Whisper model downloads from Hugging Face on first use and is then cached, so
 the first Whisper request is slower than later ones.
@@ -139,13 +179,42 @@ With LM Studio (the default):
 ```bash
 winget install ElementLabs.LMStudio    # macOS: brew install --cask lm-studio
 # Launch the app once — that bootstraps the `lms` CLI into ~/.lmstudio/bin
-lms get -y --gguf qwen/qwen3-4b        # ~2.5 GB Q4
-lms server start                       # serves :1234
-lms ps                                 # confirm the model is on the GPU, not CPU
+lms get -y --gguf qwen/qwen3-4b                    # ~2.5 GB Q4
+lms server start --port 1234
+lms load qwen3-4b --gpu max --context-length 16384
+lms ps                                             # confirm it is loaded
 ```
+
+> `lms` is not added to `PATH` until you open a new shell (or run `lms bootstrap`). Until
+> then, call it by full path: `~/.lmstudio/bin/lms` (Windows:
+> `%USERPROFILE%\.lmstudio\bin\lms.exe`). There is deliberately no `npm run` script for
+> this — the binary lives outside the repo and the path differs per OS.
 
 `GET /health` on the engine echoes the resolved `llm_base_url` and `llm_model`, which is
 the quickest way to confirm the engine and the model server agree.
+
+<details>
+<summary>If <code>lms get</code> stalls or the model never appears in <code>lms ls</code></summary>
+
+Two failure modes worth knowing, both hit during setup:
+
+**The download stalls at a few percent.** LM Studio's CDN can crawl (38 KB/s observed)
+while Hugging Face serves the same file at 15 MB/s. Fetch the GGUF directly into the models
+tree instead — the layout is `<models>/<publisher>/<repo>/<file>.gguf`:
+
+```bash
+curl -L -C - --retry 5 \
+  -o ~/.lmstudio/models/lmstudio-community/Qwen3-4B-GGUF/Qwen3-4B-Q4_K_M.gguf \
+  https://huggingface.co/lmstudio-community/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf
+```
+
+**A hand-placed GGUF is ignored by `lms ls`.** A leftover *pending download* record makes
+LM Studio treat the folder as incomplete and skip it — restarting the app is not enough.
+Quit LM Studio, delete these from `~/.lmstudio/.internal/`, then restart:
+`single-downloads-info.json`, `download-jobs-info.json`, `model-index-cache.json`. They are
+caches and LM Studio rebuilds them on launch.
+
+</details>
 
 ### Picking a model
 

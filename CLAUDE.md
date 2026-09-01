@@ -79,8 +79,13 @@ LOCAL_LLM_BASE_URL=http://localhost:1234/v1
 LOCAL_LLM_MODEL=
 LOCAL_LLM_MAX_TOKENS=1024
 LOCAL_LLM_TEMPERATURE=0.6
+# Suppresses chain-of-thought on reasoning models; blank to allow thinking
+LOCAL_LLM_PROMPT_SUFFIX=/no_think
 
 ```
+
+> **No model credentials in `web/.env.local`.** The web tier only needs to reach the
+> engine. Everything about the model lives on the engine, next to the GPU.
 
 ---
 
