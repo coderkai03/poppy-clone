@@ -1,0 +1,16 @@
+# API
+fastapi>=0.115,<1
+uvicorn[standard]>=0.32,<1
+pydantic>=2.9,<3
+python-dotenv>=1.0,<2
+
+# Media extraction
+yt-dlp>=2024.12.13
+# 1.x moved fetching to an instance method: YouTubeTranscriptApi().fetch(video_id)
+youtube-transcript-api>=1.2,<2
+
+# Local speech-to-text
+faster-whisper>=1.1,<2
+
+# Local LLM (OpenAI-compatible: LM Studio, llama-server, Ollama, vLLM)
+openai>=1.60,<3
