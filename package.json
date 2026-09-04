@@ -10,7 +10,7 @@
     "lint": "npm --prefix web run lint",
     "typecheck": "npm --prefix web run typecheck",
     "install:web": "npm --prefix web install",
-    "dev:engine": "cd engine && python -m uvicorn app:app --reload --port 8000",
+    "dev:engine": "node scripts/dev-engine.mjs",
     "tunnel": "cloudflared tunnel --url http://localhost:8000"
   }
 }

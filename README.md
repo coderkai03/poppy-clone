@@ -103,6 +103,11 @@ npm run dev:engine   # FastAPI on http://localhost:8000
 lms server start     # model server on :1234 — see Local model below
 ```
 
+`npm run dev:engine` invokes `engine/venv`'s Python directly (Windows:
+`venv\Scripts\python.exe`, Unix: `venv/bin/python`). Activating the venv first
+is unnecessary and breaks under npm, which runs scripts through `cmd.exe` on
+Windows.
+
 Then open <http://localhost:3000/canvas>.
 
 Ingestion works without the model server; only generation needs it. If it is down, the
@@ -111,6 +116,9 @@ generation node shows a `502` telling you so.
 On one machine, leave `MAC_MINI_URL=http://localhost:8000` — no tunnel needed.
 
 ### Running the engine on a separate machine
+
+Step-by-step SSH deploy to a Mac Mini (venv, tmux, LAN vs tunnel, launchd) is in
+[deployment.md](deployment.md).
 
 **The model server belongs on the engine's machine, not the web machine** — the engine
 reaches it over `localhost`, so it has to sit next to the GPU doing the work.
@@ -132,7 +140,7 @@ Copy the printed `https://<something>.trycloudflare.com` URL into `MAC_MINI_URL`
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Next dev server |
-| `npm run dev:engine` | uvicorn with reload (serves `/ingest`, `/llm`, `/health`) |
+| `npm run dev:engine` | uvicorn with reload via `engine/venv` (serves `/ingest`, `/llm`, `/health`). Calls the venv interpreter directly — do not `activate` first. |
 | `npm run build` | Production build (Turbopack) |
 | `npm run typecheck` | `next typegen && tsc --noEmit` |
 | `npm run lint` | ESLint flat config |

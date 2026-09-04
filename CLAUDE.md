@@ -100,10 +100,11 @@ LOCAL_LLM_PROMPT_SUFFIX=/no_think
 
 ### Engine (FastAPI)
 
-* Setup Venv: `cd engine && python3 -m venv venv && source venv/bin/activate`
-* Install: `pip install -r requirements.txt` (Ensure system `ffmpeg` is installed: `brew install ffmpeg`)
-* Run Dev: `uvicorn app:app --reload --port 8000`
+* Setup Venv: `cd engine && python3 -m venv venv && source venv/bin/activate` (Windows: `py -3.11 -m venv venv` then `venv\Scripts\Activate.ps1`)
+* Install: `pip install -r requirements.txt` (Ensure system `ffmpeg` is installed: `brew install ffmpeg` / `winget install Gyan.FFmpeg`)
+* Run Dev: from repo root, `npm run dev:engine` (uses `engine/venv` Python; do not activate)
 * Launch Free Tunnel: `cloudflared tunnel --url http://localhost:8000`
+* Deploy the engine to a Mac Mini over SSH: see [deployment.md](deployment.md)
 
 ### Local Model Server (required for generation)
 
