@@ -12,6 +12,7 @@ import os
 import secrets
 import shutil
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from dotenv import load_dotenv
@@ -23,7 +24,10 @@ from models import HealthResponse, IngestRequest, IngestResponse, LlmRequest
 from services import llm, whisper
 from services.extractor import ingest_url
 
-load_dotenv()
+# Always load engine/.env next to this file. Bare load_dotenv() follows the
+# process cwd, which is wrong when npm starts uvicorn from the repo root.
+_ENGINE_DIR = Path(__file__).resolve().parent
+load_dotenv(_ENGINE_DIR / ".env")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +37,13 @@ logger = logging.getLogger("engine")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    env_file = _ENGINE_DIR / ".env"
+    if not os.getenv("MAC_API_SECRET"):
+        logger.warning(
+            "MAC_API_SECRET is empty. Expected it in %s (exists=%s).",
+            env_file,
+            env_file.is_file(),
+        )
     if shutil.which("ffmpeg") is None:
         logger.warning(
             "ffmpeg was not found on PATH. Native YouTube captions will still "
@@ -60,7 +71,10 @@ def require_secret(
         # A misconfigured engine must not silently accept every request.
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="MAC_API_SECRET is not configured on the engine.",
+            detail=(
+                "MAC_API_SECRET is not set. Copy engine/.env.example to "
+                f"{_ENGINE_DIR / '.env'} and restart the engine."
+            ),
         )
 
     # compare_digest keeps the check constant-time.
