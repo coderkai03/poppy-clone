@@ -261,6 +261,7 @@ tmux, or add a second LaunchAgent that execs `~/.lmstudio/bin/lms server start`.
 | Symptom | Likely cause |
 | --- | --- |
 | `ssh: Could not resolve hostname` | Use the LAN IP; confirm Remote Login is on. |
+| Engine 500 `MAC_API_SECRET is not set` | `engine/.env` is missing on the Mini, or uvicorn was not restarted after creating it. The file must sit next to `app.py`, not at the repo root. |
 | Engine 401 | `MAC_API_SECRET` differs between `web/.env.local` and `engine/.env`. |
 | Engine 502 on generate | Model server down, or no model loaded. `lms ps` / `curl localhost:1234/v1/models`. |
 | Laptop cannot reach `:8000` on LAN | Engine bound to `127.0.0.1`. Restart with `--host 0.0.0.0`. |
