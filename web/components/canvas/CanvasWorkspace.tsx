@@ -73,7 +73,7 @@ function Flow() {
         <Panel position="top-center" className="!top-24">
           <p className="max-w-sm text-center text-sm text-muted">
             Paste a video link above. You&apos;ll get a media card and a transcript,
-            then wire the transcript into a generation node to synthesise it.
+            then hover the transcript&apos;s plus and click Chat to synthesise it.
           </p>
         </Panel>
       ) : null}

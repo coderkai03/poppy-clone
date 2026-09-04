@@ -1,7 +1,13 @@
 "use client";
 
-import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Captions, Mic, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
+import {
+  Handle,
+  Position,
+  useNodeConnections,
+  type NodeProps,
+} from "@xyflow/react";
+import { Captions, Mic, Plus, Trash2 } from "lucide-react";
 
 import type { TranscriptNode as TranscriptNodeType } from "@/lib/canvas";
 import { useCanvasStore } from "@/hooks/useCanvasStore";
@@ -52,7 +58,81 @@ export function TranscriptNode({ id, data }: NodeProps<TranscriptNodeType>) {
       </p>
 
       <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+      <TranscriptSourceHandle nodeId={id} />
     </div>
+  );
+}
+
+/**
+ * Vacant source handle renders as a plus. Hovering it (or the revealed label)
+ * opens Chat, which creates a generation node already wired to this transcript.
+ * Drag-to-connect still works from the handle itself.
+ */
+function TranscriptSourceHandle({ nodeId }: { nodeId: string }) {
+  const addGenerationNode = useCanvasStore((state) => state.addGenerationNode);
+  const connections = useNodeConnections({ id: nodeId, handleType: "source" });
+  const vacant = connections.length === 0;
+
+  const [hot, setHot] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function openMenu() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setHot(true);
+  }
+
+  function scheduleClose() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setHot(false), 140);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    };
+  }, []);
+
+  function addConnectedChat(event: MouseEvent<HTMLElement>) {
+    event.stopPropagation();
+    addGenerationNode(nodeId);
+  }
+
+  return (
+    <>
+      <Handle
+        type="source"
+        position={Position.Right}
+        className={
+          vacant
+            ? `transcript-source-vacant${hot ? " transcript-source-vacant-hot" : ""}`
+            : undefined
+        }
+        aria-label={vacant ? "Add chat from this transcript" : undefined}
+        onMouseEnter={vacant ? openMenu : undefined}
+        onMouseLeave={vacant ? scheduleClose : undefined}
+        onClick={vacant ? addConnectedChat : undefined}
+      >
+        {vacant ? <Plus className="size-2.5" strokeWidth={2.5} /> : null}
+      </Handle>
+
+      {vacant ? (
+        <button
+          type="button"
+          onClick={addConnectedChat}
+          onMouseEnter={openMenu}
+          onMouseLeave={scheduleClose}
+          onFocus={openMenu}
+          onBlur={scheduleClose}
+          aria-label="Add chat node connected to this transcript"
+          className={`nodrag nopan absolute top-1/2 left-full z-20 ml-5 inline-flex -translate-y-1/2 items-center rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium shadow-lg transition-colors hover:border-accent hover:bg-accent hover:text-white ${
+            hot
+              ? "opacity-100"
+              : "pointer-events-none opacity-0 focus-visible:pointer-events-auto focus-visible:opacity-100"
+          }`}
+        >
+          Chat
+        </button>
+      ) : null}
+    </>
   );
 }

@@ -142,10 +142,10 @@ LOCAL_LLM_PROMPT_SUFFIX=/no_think
 * Canvas nodes must support 3 core types:
 1. `MediaSourceNode`: Displays video thumbnail, platform badge, and original URL.
 2. `TranscriptNode`: Displays editable raw text extracted from the media.
-3. `GenerationNode`: Displays markdown synthesis streamed from the local model.
+3. `GenerationNode`: Displays markdown synthesis streamed from the local model. Toolbar and vacant-handle actions are labeled **Chat**.
 
 
-* Connecting an edge from `TranscriptNode` to a `GenerationNode` passes the transcript context into the prompt payload.
+* Connecting an edge from `TranscriptNode` to a `GenerationNode` passes the transcript context into the prompt payload. A vacant transcript source handle shows a plus; hovering it reveals **Chat**, which creates a generation node already wired to that transcript. The toolbar **Chat** button creates an unwired generation node.
 
 ### D. Local LLM Guidelines (`engine/services/llm.py`)
 

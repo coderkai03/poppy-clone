@@ -19,8 +19,8 @@ paste URL → MediaSourceNode
                    otherwise → yt-dlp audio (128kbps mp3) → faster-whisper
               ↓
            TranscriptNode  (editable)
-              ↓  drag an edge
-           GenerationNode
+              ↓  drag an edge, or Chat on a vacant source handle
+           GenerationNode  (Chat)
               ↓  POST /api/llm  (proxy, keeps the secret server-side)
            engine: POST /llm → local model server (:1234) → GPU
               ↓  SSE stream, piped straight through

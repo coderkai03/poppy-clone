@@ -11,7 +11,7 @@ const STEPS = [
   },
   {
     title: "Synthesise",
-    body: "Wire a transcript into a generation node and stream markdown notes back from OpenRouter.",
+    body: "Click Chat on a transcript (or drag an edge) and stream markdown notes from the local model.",
   },
 ];
 

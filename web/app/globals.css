@@ -43,6 +43,54 @@ body {
   border: 2px solid var(--background);
 }
 
+/* Vacant transcript source: plus expands and fills on any hover of its surface. */
+.react-flow__handle.transcript-source-vacant {
+  display: flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  pointer-events: all;
+  background: var(--surface);
+  border: 1.5px solid var(--accent);
+  border-radius: 100%;
+  color: var(--accent);
+  cursor: pointer;
+  transition:
+    width 150ms ease,
+    height 150ms ease,
+    background-color 150ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.react-flow__handle.transcript-source-vacant * {
+  pointer-events: none;
+}
+
+.react-flow__handle.transcript-source-vacant svg {
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  transition: width 150ms ease, height 150ms ease;
+}
+
+.react-flow__handle.transcript-source-vacant:hover,
+.react-flow__handle.transcript-source-vacant.transcript-source-vacant-hot {
+  width: 28px;
+  height: 28px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.react-flow__handle.transcript-source-vacant:hover svg,
+.react-flow__handle.transcript-source-vacant.transcript-source-vacant-hot svg {
+  width: 14px;
+  height: 14px;
+}
+
 .react-flow__edge-path {
   stroke: var(--accent);
   stroke-width: 2;

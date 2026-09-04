@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { useCanvasStore } from "@/hooks/useCanvasStore";
 import { useIngest } from "@/hooks/useIngest";
@@ -49,8 +49,7 @@ export function Toolbar() {
         </Button>
         <div className="mx-0.5 h-6 w-px bg-border" />
         <Button variant="secondary" onClick={() => addGenerationNode()}>
-          <Sparkles className="size-3.5" />
-          Generation
+          Chat
         </Button>
         <Button
           variant="ghost"

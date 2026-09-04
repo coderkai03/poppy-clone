@@ -27,7 +27,7 @@ export function GenerationNode({ id, data }: NodeProps<GenerationNodeType>) {
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-medium text-accent">
           <Sparkles className="size-3.5" />
-          Synthesis
+          Chat
         </div>
         <div className="flex items-center gap-1">
           <Badge>

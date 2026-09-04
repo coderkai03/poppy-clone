@@ -23,6 +23,7 @@ import type { ParsedSource } from "@/lib/platform";
 import type { IngestResult, TranscriptContext } from "@/lib/schemas";
 
 const NODE_WIDTH = 280;
+const TRANSCRIPT_NODE_WIDTH = 320;
 const COLUMN_GAP = 80;
 
 interface CanvasState {
@@ -36,7 +37,8 @@ interface CanvasState {
   addMediaNode: (url: string, parsed: ParsedSource) => string;
   /** Creates a transcript node already wired to the media node it came from. */
   addTranscriptNode: (mediaNodeId: string, result: IngestResult) => string;
-  addGenerationNode: () => string;
+  /** Toolbar: unwired. Transcript Chat: already connected to that source. */
+  addGenerationNode: (sourceTranscriptId?: string) => string;
 
   updateMediaNode: (id: string, patch: Partial<MediaSourceNodeData>) => void;
   updateTranscriptNode: (id: string, patch: Partial<TranscriptNodeData>) => void;
@@ -153,16 +155,12 @@ export const useCanvasStore = create<CanvasState>()(
         return id;
       },
 
-      addGenerationNode: () => {
+      addGenerationNode: (sourceTranscriptId) => {
         const id = newNodeId("generation");
         const { nodes } = get();
-        const rightmost = nodes.reduce(
-          (max, node) => Math.max(max, node.position.x),
-          0,
-        );
-        const generationCount = nodes.filter(
-          (node) => node.type === "generation",
-        ).length;
+        const source = sourceTranscriptId
+          ? nodes.find((node) => node.id === sourceTranscriptId)
+          : undefined;
 
         const data: GenerationNodeData = {
           prompt: "",
@@ -171,19 +169,49 @@ export const useCanvasStore = create<CanvasState>()(
           error: null,
         };
 
+        let position: { x: number; y: number };
+        if (source) {
+          const sourceWidth =
+            source.measured?.width ?? source.width ?? TRANSCRIPT_NODE_WIDTH;
+          position = {
+            x: source.position.x + sourceWidth + COLUMN_GAP,
+            y: source.position.y,
+          };
+        } else {
+          const rightmost = nodes.reduce(
+            (max, node) => Math.max(max, node.position.x),
+            0,
+          );
+          const generationCount = nodes.filter(
+            (node) => node.type === "generation",
+          ).length;
+          position = {
+            x: rightmost + NODE_WIDTH + COLUMN_GAP,
+            y: 80 + generationCount * 320,
+          };
+        }
+
+        const wired =
+          source?.type === "transcript"
+            ? {
+                id: source.id + "->" + id,
+                source: source.id,
+                target: id,
+                animated: true,
+              }
+            : null;
+
         set((state) => ({
           nodes: [
             ...state.nodes,
             {
               id,
               type: "generation",
-              position: {
-                x: rightmost + NODE_WIDTH + COLUMN_GAP,
-                y: 80 + generationCount * 320,
-              },
+              position,
               data,
             } satisfies AppNode,
           ],
+          edges: wired ? [...state.edges, wired] : state.edges,
         }));
 
         return id;
