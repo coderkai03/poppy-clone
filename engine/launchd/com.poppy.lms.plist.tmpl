@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.poppy.lms</string>
+  <key>WorkingDirectory</key>
+  <string>__HOME__</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__LAUNCHD_DIR__/run-lms.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>PATH</key>
+    <string>__HOME__/.lmstudio/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>POPPY_HOME</key>
+    <string>__HOME__</string>
+    <key>POPPY_LMS_MODEL</key>
+    <string>qwen/qwen3-4b</string>
+    <key>POPPY_LMS_PORT</key>
+    <string>1234</string>
+    <key>POPPY_LMS_CONTEXT</key>
+    <string>16384</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/poppy-lms.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/poppy-lms.err</string>
+</dict>
+</plist>

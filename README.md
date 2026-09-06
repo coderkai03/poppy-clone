@@ -64,7 +64,8 @@ message rather than an empty card.
 ## Prerequisites
 
 - Node.js 20.9+ (Next 16 minimum)
-- Python 3.11+
+- Python 3.11–3.13 (**3.12** on the Mac Mini). Homebrew's default 3.14 hangs
+  `faster-whisper` under launchd — see [deployment.md](deployment.md#8-troubleshooting).
 - **`ffmpeg` on PATH** — required only for the Whisper fallback. YouTube videos with
   captions work without it.
   - macOS: `brew install ffmpeg`
@@ -117,13 +118,15 @@ On one machine, leave `MAC_MINI_URL=http://localhost:8000` — no tunnel needed.
 
 ### Running the engine on a separate machine
 
-Step-by-step SSH deploy to a Mac Mini (venv, tmux, LAN vs tunnel, launchd) is in
-[deployment.md](deployment.md).
+Step-by-step deploy that turns a Mac Mini into an independent engine server
+(LaunchDaemon + Tailscale Funnel) is in [deployment.md](deployment.md). Clone
+at `~/poppy-clone` (not Desktop). From the laptop:
+`.\engine\launchd\push-and-load.ps1`.
 
 **The model server belongs on the engine's machine, not the web machine** — the engine
 reaches it over `localhost`, so it has to sit next to the GPU doing the work.
 
-Expose the engine with a free Cloudflare quick tunnel:
+A free Cloudflare **quick** tunnel is only for a short laptop-dev poke:
 
 ```bash
 npm run tunnel       # or: engine/run_tunnel.sh  /  engine/run_tunnel.ps1
@@ -132,8 +135,8 @@ npm run tunnel       # or: engine/run_tunnel.sh  /  engine/run_tunnel.ps1
 Copy the printed `https://<something>.trycloudflare.com` URL into `MAC_MINI_URL`.
 
 > **Quick tunnel URLs are ephemeral.** They change every time `cloudflared`
-> restarts, so `MAC_MINI_URL` needs updating each time. Use a named tunnel if that
-> gets tedious.
+> restarts. On the Mini use Tailscale Funnel (or a named Cloudflare tunnel) —
+> [deployment.md](deployment.md#6-public-url-tailscale-funnel).
 
 ## Scripts
 

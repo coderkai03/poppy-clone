@@ -2,6 +2,8 @@
 # Opens a free Cloudflare quick tunnel to the local engine.
 # The printed *.trycloudflare.com URL is what goes in web/.env.local as
 # MAC_MINI_URL. It changes every time this script restarts.
+# On the Mac Mini, prefer Tailscale Funnel or a named Cloudflare tunnel
+# (see deployment.md). This quick-tunnel URL changes on every restart.
 set -euo pipefail
 
 PORT="${PORT:-8000}"

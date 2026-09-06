@@ -1,90 +1,94 @@
-# Deploying the engine to a Mac Mini over SSH
+# Deploying the engine to a Mac Mini
 
-The canvas (`web/`) can stay on your laptop or Vercel. The Mac Mini runs the
-**engine** (FastAPI) and the **model server**. Those two have to share a machine:
-the engine reaches the model at `LOCAL_LLM_BASE_URL`, which defaults to
-`http://localhost:1234/v1`.
+The canvas (`web/`) stays on the laptop or Vercel. The Mini runs the **engine**
+(FastAPI) and the **model server**. Those two share a machine: the engine talks
+to the model at `LOCAL_LLM_BASE_URL` (`http://localhost:1234/v1` by default).
 
 ```
-laptop / Vercel                         Mac Mini
+laptop / Vercel                         Mac Mini  (~/poppy-clone)
 ┌─────────────────────┐                 ┌──────────────────────────────┐
-│  Next.js  :3000     │  MAC_MINI_URL   │  FastAPI engine  :8000       │
+│  Next.js  :3000     │  MAC_MINI_URL   │  LaunchDaemon  :8000         │
 │  /api/ingest        │ ──────────────► │  /ingest  /llm  /health      │
 │  /api/llm  (SSE)    │  x-secret-key   │         │                    │
 └─────────────────────┘                 │         ▼ localhost:1234     │
-                                        │  LM Studio / llama-server    │
+                                        │  LM Studio (LaunchAgent)     │
                                         └──────────────────────────────┘
 ```
 
-Do not copy `engine/venv` from another OS. Recreate it on the Mini.
+Do not copy `engine/venv` from Windows. Recreate it on the Mini with **Python 3.12**.
 
-For a single-machine setup (everything on one box), skip this file and use the
-[README](README.md#running).
+For everything on one box, skip this file and use the [README](README.md#running).
 
 ---
 
-## 1. Enable SSH on the Mini
+## What is actually running (this install)
 
-On the Mini: **System Settings → General → Sharing → Remote Login** (on).
+| Piece | Where | Survives SSH close | Survives reboot |
+| --- | --- | --- | --- |
+| Engine | LaunchDaemon `system/com.poppy.engine` → uvicorn on `127.0.0.1:8000` | yes | yes (even before login) |
+| Model | LaunchAgent `gui/…/com.poppy.lms` → LM Studio `:1234` | yes | yes, **after automatic login** |
+| Public URL | Tailscale Funnel `https://<machine>.<tailnet>.ts.net` → `:8000` | yes | yes, if Funnel stays enabled |
 
-From the laptop:
+The checkout the daemon executes is **`~/poppy-clone`**, not Desktop. macOS TCC
+blocks LaunchDaemons from `Desktop` / `Documents` / `Downloads`
+(`run-engine.sh: Operation not permitted`). `remote-load.sh` copies a Desktop
+clone there on first load.
 
-```bash
-ssh youruser@mac-mini.local
+Logs: `~/Library/Logs/poppy-engine.log` (and `.err`), `poppy-lms.log`.
+
+Do not leave `uvicorn` or `cloudflared tunnel --url` in a bare SSH prompt.
+
+---
+
+## 1. Enable SSH
+
+On the Mini: **System Settings → General → Sharing → Remote Login**.
+
+From the laptop (LAN `.local`, LAN IP, or Tailscale IP):
+
+```powershell
+ssh rianc@100.77.134.91
 ```
-
-If `.local` does not resolve, use the Mini's LAN IP. On Windows PowerShell the
-same command works if OpenSSH is installed (it is, on current Windows 10/11).
 
 ---
 
 ## 2. One-time tools on the Mini
 
 ```bash
-# Homebrew, if missing
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-brew install python@3.12 ffmpeg git tmux
-brew install --cask lm-studio          # or: brew install ollama / llama.cpp
+brew install python@3.12 ffmpeg git
+# Use 3.12, not `python3` — Homebrew's default 3.14 hangs faster-whisper.
+brew install --cask lm-studio
 ```
 
-`ffmpeg` is only required for the Whisper fallback (TikTok / Instagram / YouTube
-with no captions). Native YouTube captions work without it.
+`ffmpeg` is only for the Whisper fallback (TikTok / IG / YouTube with no captions).
 
-Open LM Studio **once from the Mini's desktop** so `~/.lmstudio/bin/lms` exists.
-Then, in SSH:
+Open LM Studio **once on the Mini desktop** so `~/.lmstudio/bin/lms` exists:
 
 ```bash
 export PATH="$HOME/.lmstudio/bin:$PATH"
+~/.lmstudio/bin/lms bootstrap
 lms get -y --gguf qwen/qwen3-4b
-lms server start --port 1234
-lms load qwen3-4b --gpu max --context-length 16384
-lms ps                                 # confirm Metal / GPU, not CPU
 ```
 
-Apple Silicon uses Metal. That is the reason generation lives on the Mini.
-
-`lms` is not on `PATH` until a new shell (or `lms bootstrap`). Until then call
-`~/.lmstudio/bin/lms` by full path.
+The load id is `qwen/qwen3-4b`, not `qwen3-4b`. Leave JIT model loading on in
+LM Studio Developer settings.
 
 ---
 
-## 3. First deploy
+## 3. First checkout
 
-### Preferred: clone on the Mini
+Clone into **the home directory**, not Desktop:
 
 ```bash
 cd ~
 git clone <your-repo-url> poppy-clone
 cd poppy-clone/engine
-
-python3 -m venv venv
+/opt/homebrew/bin/python3.12 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `engine/.env`. The only required change is `MAC_API_SECRET` — it must
-match `web/.env.local` on the machine that runs Next.js.
+`engine/.env` (not `.env.local`). `MAC_API_SECRET` must match `web/.env.local`.
 
 ```env
 MAC_API_SECRET=change-me-to-a-long-random-string
@@ -101,158 +105,114 @@ LOCAL_LLM_PROMPT_SUFFIX=/no_think
 
 Leave `LOCAL_LLM_MODEL` blank to auto-detect whatever LM Studio has loaded.
 
-### Alternative: copy from the laptop
+If you already cloned under `~/Desktop/github/poppy-clone`, leave it. The loader
+rsyncs that tree to `~/poppy-clone` and points launchd at the copy.
 
-If the repo is not on a remote yet, from PowerShell:
+---
+
+## 4. Stay awake and logged in
+
+The engine daemon does not need a GUI. LM Studio (Metal) does.
+
+1. **Users & Groups → Automatic login** → the Mini user.
+2. **Energy** → prevent sleep when the display is off.
+3. Once: `sudo pmset -a sleep 0 disksleep 0`
+4. Do not log that user out.
+
+---
+
+## 5. Install launchd from the PC
+
+Plists live in `engine/launchd/`. Do not paste XML into SSH (the paste gets
+truncated and launchd loads a broken file).
+
+From PowerShell in the repo:
 
 ```powershell
-scp -r G:\poppy-clone youruser@mac-mini.local:~/poppy-clone
+.\engine\launchd\push-and-load.ps1 rianc@100.77.134.91
 ```
 
-Then SSH in and still create a **new** `venv` on the Mini. A Windows venv will
-not run.
+That `scp`s `engine/launchd` onto the Mini checkout, then runs
+`./remote-load.sh`. Type the Mini password for `scp`/`ssh`, then once for `sudo`.
+
+By hand:
+
+```powershell
+scp -r G:\poppy-clone\engine\launchd rianc@100.77.134.91:~/Desktop/github/poppy-clone/engine/
+ssh -t rianc@100.77.134.91 "cd ~/Desktop/github/poppy-clone/engine/launchd && chmod +x remote-load.sh && ./remote-load.sh"
+```
+
+After the first success, later copies can go straight to the safe tree:
+
+```powershell
+.\engine\launchd\push-and-load.ps1 rianc@100.77.134.91 -RemoteEngine "~/poppy-clone/engine"
+```
+
+Success looks like:
+
+```text
+{"status":"ok", ...}
+Engine LaunchDaemon is up from /Users/rianc/poppy-clone/engine (survives reboot).
+```
+
+`/health` is unauthenticated. `/ingest` and `/llm` need `x-secret-key`.
+
+Unload: on the Mini, `~/poppy-clone/engine/launchd/uninstall.sh`.
 
 ---
 
-## 4. Start the engine (and keep it up after disconnect)
+## 6. Public URL (Tailscale Funnel)
 
-A process started in a bare SSH session dies when you close the laptop. Use
-`tmux`, or a LaunchAgent (§7).
+This install uses Funnel (free on Tailscale Personal; no Cloudflare domain).
 
-```bash
-cd ~/poppy-clone/engine
-tmux new -s poppy
-./venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000
-```
-
-Detach with `Ctrl-B` then `D`. Reattach later with `tmux attach -t poppy`.
-
-| Bind | When |
-| --- | --- |
-| `--host 127.0.0.1` | Cloudflare tunnel, or anything that proxies from localhost. Safer default. |
-| `--host 0.0.0.0` | Same-LAN access from the laptop with no tunnel. |
-
-`--reload` is a laptop-dev flag. Leave it off on the Mini.
-
-Health check on the Mini:
+On the Mini, once:
 
 ```bash
-curl http://127.0.0.1:8000/health
+sudo tailscale funnel --bg 8000
+tailscale funnel status
 ```
 
-You want `"status":"ok"` and a resolved `llm_model` (not a blank / error).
-`/health` is unauthenticated; `/ingest` and `/llm` require `x-secret-key`.
-
----
-
-## 5. Point the web app at the Mini
-
-On the machine that runs Next.js, set `web/.env.local`:
-
-### Same LAN
+Put the printed `https://<machine>.<tailnet>.ts.net` in `web/.env.local`:
 
 ```env
-MAC_MINI_URL=http://<mini-lan-ip>:8000
-MAC_API_SECRET=<identical to engine/.env>
+MAC_MINI_URL=https://mac-mini.tailed6607.ts.net
+MAC_API_SECRET=<identical to engine/.env on the Mini>
 ```
 
-The engine must have been started with `--host 0.0.0.0` for this to work.
+Restart `npm run dev` (or redeploy Vercel). Open `/canvas`. Then close SSH.
 
-### Different network, or Vercel
+Funnel proxies to `http://127.0.0.1:8000`. A **502** from the `*.ts.net` host
+means the engine is down, not that Funnel is misconfigured.
 
-On the Mini, in a second tmux pane (or a second session):
+Same-tailnet only (no Vercel) can skip Funnel and use
+`MAC_MINI_URL=http://100.x.x.x:8000` if you change the daemon `--host` to
+`0.0.0.0` and `sudo launchctl kickstart -k system/com.poppy.engine`.
 
-```bash
-brew install cloudflared          # once
-cloudflared tunnel --url http://localhost:8000
-```
-
-From the repo you can also run `./engine/run_tunnel.sh`. Copy the printed
-`https://<something>.trycloudflare.com` URL into `MAC_MINI_URL`.
-
-Quick-tunnel URLs change every time `cloudflared` restarts. A [named Cloudflare
-tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
-is the fix if that gets tedious.
-
-Restart `npm run dev` (or redeploy Vercel) so Next picks up the env change.
-Open `/canvas` — ingest and generate now hit the Mini.
-
-The Next proxies exist so `MAC_API_SECRET` never reaches the browser. Do not
-point the canvas at the Mini's `/ingest` or `/llm` directly.
+A Cloudflare **named** tunnel is optional if you later want a custom domain.
+Quick `*.trycloudflare.com` tunnels change URL on every restart — do not use
+them on the Mini. See the [Cloudflare tunnel docs](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/).
 
 ---
 
-## 6. Day-to-day updates
+## 7. Day-to-day updates
 
-From the laptop, after you push:
-
-```powershell
-ssh youruser@mac-mini.local "cd ~/poppy-clone && git pull && engine/venv/bin/pip install -r engine/requirements.txt"
-```
-
-Then restart uvicorn in the tmux session:
+After you push, from the laptop. The live tree is `~/poppy-clone`:
 
 ```powershell
-ssh -t youruser@mac-mini.local "tmux send-keys -t poppy C-c './venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8000' Enter"
+ssh rianc@100.77.134.91 "cd ~/poppy-clone && git pull && engine/venv/bin/pip install -r engine/requirements.txt"
+ssh rianc@100.77.134.91 "sudo launchctl kickstart -k system/com.poppy.engine"
 ```
 
-Or SSH in, `git pull`, and restart by hand. Re-run `pip install` only when
-`engine/requirements.txt` changed.
+Re-run `pip install` only when `engine/requirements.txt` changed.
 
----
+If launchd files changed, re-run `push-and-load.ps1` (not only `git pull` on
+Desktop — the daemon reads `~/poppy-clone`).
 
-## 7. Optional: stay up across reboots (launchd)
+Reload LM Studio:
 
-A LaunchAgent survives logout and reboot. Save this as
-`~/Library/LaunchAgents/com.poppy.engine.plist` on the Mini, substituting your
-home directory:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>com.poppy.engine</string>
-  <key>WorkingDirectory</key>
-  <string>/Users/YOURUSER/poppy-clone/engine</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/Users/YOURUSER/poppy-clone/engine/venv/bin/python</string>
-    <string>-m</string>
-    <string>uvicorn</string>
-    <string>app:app</string>
-    <string>--host</string>
-    <string>127.0.0.1</string>
-    <string>--port</string>
-    <string>8000</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>/Users/YOURUSER/Library/Logs/poppy-engine.log</string>
-  <key>StandardErrorPath</key>
-  <string>/Users/YOURUSER/Library/Logs/poppy-engine.err</string>
-</dict>
-</plist>
+```powershell
+ssh rianc@100.77.134.91 "launchctl kickstart -k gui/`id -u`/com.poppy.lms"
 ```
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.poppy.engine.plist
-launchctl start com.poppy.engine
-```
-
-After a `git pull`, bounce it:
-
-```bash
-launchctl kickstart -k gui/$(id -u)/com.poppy.engine
-```
-
-LM Studio is a second process (`lms server start` + `lms load`). Leave it in
-tmux, or add a second LaunchAgent that execs `~/.lmstudio/bin/lms server start`.
 
 ---
 
@@ -260,15 +220,27 @@ tmux, or add a second LaunchAgent that execs `~/.lmstudio/bin/lms server start`.
 
 | Symptom | Likely cause |
 | --- | --- |
-| `ssh: Could not resolve hostname` | Use the LAN IP; confirm Remote Login is on. |
-| Engine 500 `MAC_API_SECRET is not set` | `engine/.env` is missing on the Mini, or uvicorn was not restarted after creating it. The file must sit next to `app.py`, not at the repo root. |
-| Engine 401 | `MAC_API_SECRET` differs between `web/.env.local` and `engine/.env`. |
-| Engine 502 on generate | Model server down, or no model loaded. `lms ps` / `curl localhost:1234/v1/models`. |
-| Laptop cannot reach `:8000` on LAN | Engine bound to `127.0.0.1`. Restart with `--host 0.0.0.0`. |
-| `/health` ok but Whisper ingest fails | `ffmpeg` missing from `PATH` for the LaunchAgent. Use a full path or set `EnvironmentVariables` in the plist. |
-| Canvas works, then dies after you close SSH | Process was not in tmux / launchd. |
-| Quick tunnel 502 after a Mini reboot | `cloudflared` printed a new URL — update `MAC_MINI_URL` and restart Next. |
-| Generation is slow / CPU-bound | `lms ps` shows CPU. Reload with `--gpu max`. Prefer LM Studio over Ollama on Apple Silicon if you hit a CPU fallback. |
+| Funnel **502** on `/health` | Nothing on `127.0.0.1:8000`. `curl` localhost on the Mini; read `~/Library/Logs/poppy-engine.err`. |
+| `run-engine.sh: Operation not permitted` / `getcwd` | Daemon pointed at Desktop. `sudo launchctl bootout system/com.poppy.engine`, then `push-and-load.ps1` (copies to `~/poppy-clone`). |
+| `env: bash\r` | Windows CRLF on a `.sh`. `remote-load.sh` strips CR; or `sed -i '' 's/\r$//' *.sh`. |
+| `launchctl` **running**, empty logs, `:8000` dead | Hung Python 3.14 import, or a stuck PID. `python -V` must be 3.12. `sudo launchctl bootout system/com.poppy.engine`, recreate venv, reload. |
+| Engine 401 | `MAC_API_SECRET` differs between `web/.env.local` and `~/poppy-clone/engine/.env`. |
+| Engine 500 `MAC_API_SECRET is not set` | `.env` missing next to `app.py` (not `.env.local`, not the repo root). |
+| Engine 502 on generate | LM Studio down or no model. `lms ps` / `curl localhost:1234/v1/models`. Auto-login required after reboot. |
+| `/health` ok, Whisper ingest fails | `ffmpeg` not on the daemon `PATH`. Homebrew is `/opt/homebrew/bin`. |
+| Jobs gone after reboot | Mini slept, or no automatic login (LMS). Engine daemon should still start. |
+| `lms load` cannot find `qwen3-4b` | Use `qwen/qwen3-4b`. |
+| Generation CPU-bound | `lms ps` shows CPU. Reload with `--gpu max`. |
 
-Do not deploy Next.js to the Mini unless you also want the canvas served from
-there. The Mini only needs Python 3.11+, ffmpeg, and a model server.
+Foreground test (dies when SSH closes — not the server):
+
+```bash
+cd ~/poppy-clone/engine
+./venv/bin/python -u -m uvicorn app:app --host 127.0.0.1 --port 8000 --loop asyncio
+```
+
+`nohup` of that command survives SSH but **not** reboot. Prefer the LaunchDaemon.
+
+Do not deploy Next.js to the Mini unless you want the canvas served from there.
+The Mini needs Python 3.12, ffmpeg, and a model server. 3.11–3.13 work; **3.14
+does not**.

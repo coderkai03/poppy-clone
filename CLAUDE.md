@@ -3,7 +3,7 @@
 ## 1. Project Overview & Architecture
 Monorepo for an open-source, canvas-based multimodal content workspace.
 - **Frontend / Cloud:** Next.js (App Router, Tailwind CSS, TypeScript, Canvas via `@xyflow/react` or `tldraw`) hosted on Vercel. Handles UI state and nodes. Both API routes are thin proxies to the engine; the web tier holds no model credentials.
-- **Local Engine:** FastAPI (Python 3.11+) on local hardware (exposed to Vercel via Cloudflare Tunnel). Handles video scraping (`yt-dlp`), native YouTube caption extraction (`youtube-transcript-api`), local speech-to-text (`faster-whisper`), **and LLM generation against a locally hosted model.**
+- **Local Engine:** FastAPI (Python 3.12 on the Mini; 3.11–3.13 elsewhere. 3.14 hangs `faster-whisper` under launchd) on local hardware (exposed via Tailscale Funnel or a Cloudflare tunnel). Handles video scraping (`yt-dlp`), native YouTube caption extraction (`youtube-transcript-api`), local speech-to-text (`faster-whisper`), **and LLM generation against a locally hosted model.**
 - **Cost Constraint:** 100% $0 stack. All inference — Whisper and the LLM — is local compute.
 
 > **Generation moved off OpenRouter.** It was rate limited, queued and network-bound.
@@ -35,7 +35,8 @@ Monorepo for an open-source, canvas-based multimodal content workspace.
 │   │   ├── llm.py        # Local OpenAI-compatible client + prompt building
 │   │   └── whisper.py    # faster-whisper singleton loader
 │   ├── requirements.txt
-│   └── run_tunnel.sh     # Cloudflare quick tunnel launcher
+│   ├── launchd/          # Mini LaunchDaemon (engine) + LaunchAgent (lms)
+│   └── run_tunnel.sh     # Cloudflare quick tunnel (ephemeral)
 └── package.json          # Root npm scripts for monorepo tasks
 
 ```
@@ -59,7 +60,7 @@ Monorepo for an open-source, canvas-based multimodal content workspace.
 
 ### `web/.env.local`
 ```env
-MAC_MINI_URL=https://<your-tunnel-url>.trycloudflare.com
+MAC_MINI_URL=https://mac-mini.<tailnet>.ts.net
 MAC_API_SECRET=your-shared-secret-auth-key
 
 ```
@@ -100,11 +101,14 @@ LOCAL_LLM_PROMPT_SUFFIX=/no_think
 
 ### Engine (FastAPI)
 
-* Setup Venv: `cd engine && python3 -m venv venv && source venv/bin/activate` (Windows: `py -3.11 -m venv venv` then `venv\Scripts\Activate.ps1`)
+* Setup Venv: `cd engine && python3 -m venv venv` — on the Mini use
+  `/opt/homebrew/bin/python3.12 -m venv venv` (3.14 hangs faster-whisper in
+  launchd). Windows: `py -3.11 -m venv venv` then `venv\Scripts\Activate.ps1`.
 * Install: `pip install -r requirements.txt` (Ensure system `ffmpeg` is installed: `brew install ffmpeg` / `winget install Gyan.FFmpeg`)
 * Run Dev: from repo root, `npm run dev:engine` (uses `engine/venv` Python; do not activate)
-* Launch Free Tunnel: `cloudflared tunnel --url http://localhost:8000`
-* Deploy the engine to a Mac Mini over SSH: see [deployment.md](deployment.md)
+* Quick tunnel (ephemeral): `cloudflared tunnel --url http://localhost:8000`
+* Mini as an independent server: `engine/launchd/push-and-load.ps1` (copies
+  to `~/poppy-clone`, installs LaunchDaemon). See [deployment.md](deployment.md).
 
 ### Local Model Server (required for generation)
 
