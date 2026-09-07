@@ -702,7 +702,7 @@ Where `poppy-clone` currently stands relative to the above. Feature names in cod
 | Media source node | All platforms in §6.1 | YouTube, TikTok, Instagram | `MediaSourceNode` |
 | Transcript node | ✓ auto | ✓ auto, editable | `TranscriptNode`; captions-first then Whisper |
 | Generation node | ✓ chat history, composer, resize | ✓ streaming markdown chat | `GenerationNode`, labeled **Chat**; Enter to send, drag corners to resize |
-| File / upload nodes | ✓ | ✓ text files | toolbar **File**; type-specific preview (table / markdown / JSON / HTML); wires into chat like a transcript |
+| File / upload nodes | ✓ | ✓ text + PDF | toolbar **File**; type-specific preview (table / markdown / JSON / HTML / PDF); up to 5 MB; wires into chat like a transcript |
 | Edge = context | ✓ | ✓ | transcript → generation |
 | Model roster | 4 text + 2 image + Perplexity | 1 local OpenAI-compatible model | biggest divergence; ours is $0 and private |
 | Context strategy | stuff the window, no RAG | context capped at `MAX_CONTEXT_CHARS` | same philosophy, different reason (latency, not recall) |

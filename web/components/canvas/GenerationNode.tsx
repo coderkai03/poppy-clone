@@ -105,7 +105,7 @@ export function GenerationNode({
       />
 
       <div className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg">
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <div className="flex shrink-0 cursor-grab items-center justify-between gap-2 border-b border-border px-3 py-2 active:cursor-grabbing">
           <div className="flex items-center gap-1.5 text-xs font-medium text-accent">
             <Sparkles className="size-3.5" />
             Chat

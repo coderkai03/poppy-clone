@@ -1,5 +1,5 @@
-export const MAX_FILE_BYTES = 512 * 1024;
-export const MAX_FILE_CHARS = 120_000;
+export const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
+export const MAX_FILE_CHARS = 300_000;
 
 const TEXT_EXTENSIONS = new Set([
   ".txt",
@@ -18,6 +18,7 @@ const TEXT_EXTENSIONS = new Set([
   ".tex",
   ".ini",
   ".cfg",
+  ".pdf",
 ]);
 
 export const FILE_ACCEPT = [...TEXT_EXTENSIONS].join(",");
@@ -30,6 +31,7 @@ export type FileKind =
   | "html"
   | "xml"
   | "yaml"
+  | "pdf"
   | "text";
 
 export const FILE_KIND_LABEL: Record<FileKind, string> = {
@@ -40,6 +42,7 @@ export const FILE_KIND_LABEL: Record<FileKind, string> = {
   html: "HTML",
   xml: "XML",
   yaml: "YAML",
+  pdf: "PDF",
   text: "Text",
 };
 
@@ -52,13 +55,19 @@ export function fileKind(name: string, mime: string): FileKind {
   if (ext === ".html" || ext === ".htm" || mime.startsWith("text/html")) return "html";
   if (ext === ".xml" || mime === "application/xml" || mime === "text/xml") return "xml";
   if (ext === ".yml" || ext === ".yaml") return "yaml";
+  if (ext === ".pdf" || mime === "application/pdf") return "pdf";
   return "text";
 }
 
 export function fileNodeWidth(kind: FileKind): number {
   if (kind === "csv" || kind === "tsv") return 480;
+  if (kind === "pdf") return 400;
   if (kind === "text") return 320;
   return 380;
+}
+
+export function isPdf(file: File): boolean {
+  return extensionOf(file.name) === ".pdf" || file.type === "application/pdf";
 }
 
 export type FileReadOk = {
@@ -80,6 +89,7 @@ function extensionOf(name: string): string {
 
 export function isSupportedTextFile(file: File): boolean {
   if (file.type.startsWith("text/") || file.type === "application/json") return true;
+  if (file.type === "application/pdf") return true;
   return TEXT_EXTENSIONS.has(extensionOf(file.name));
 }
 
@@ -101,21 +111,18 @@ export async function readTextUpload(file: File): Promise<FileReadResult> {
   if (file.size > MAX_FILE_BYTES) {
     return {
       ok: false,
-      error: `“${file.name}” is over ${formatFileSize(MAX_FILE_BYTES)}. Use a smaller file.`,
+      error: `"${file.name}" is over ${formatFileSize(MAX_FILE_BYTES)}. Use a smaller file.`,
     };
   }
 
-  if (extensionOf(file.name) === ".pdf" || file.type === "application/pdf") {
-    return {
-      ok: false,
-      error: "PDFs aren’t readable yet. Export as .txt or .md and upload that.",
-    };
+  if (isPdf(file)) {
+    return readPdfUpload(file);
   }
 
   if (!isSupportedTextFile(file)) {
     return {
       ok: false,
-      error: "Upload a text file (.txt, .md, .csv, .json, .html, .xml, .log).",
+      error: "Upload a text file (.txt, .md, .csv, .json, .html, .xml, .log, .pdf).",
     };
   }
 
@@ -123,13 +130,13 @@ export async function readTextUpload(file: File): Promise<FileReadResult> {
   try {
     text = await file.text();
   } catch {
-    return { ok: false, error: `Could not read “${file.name}”.` };
+    return { ok: false, error: `Could not read "${file.name}".` };
   }
 
   if (!looksLikeText(text)) {
     return {
       ok: false,
-      error: `“${file.name}” doesn’t look like text. Try exporting it as UTF-8.`,
+      error: `"${file.name}" doesn't look like text. Try exporting it as UTF-8.`,
     };
   }
 
@@ -138,6 +145,36 @@ export async function readTextUpload(file: File): Promise<FileReadResult> {
     ok: true,
     name: file.name,
     mime: file.type || "text/plain",
+    size: file.size,
+    text: truncated ? text.slice(0, MAX_FILE_CHARS) : text,
+    truncated,
+  };
+}
+
+async function readPdfUpload(file: File): Promise<FileReadResult> {
+  let text: string;
+  try {
+    const { extractPdfText } = await import("@/lib/pdf");
+    text = await extractPdfText(file);
+  } catch {
+    return {
+      ok: false,
+      error: `Could not extract text from "${file.name}". The file may be corrupt.`,
+    };
+  }
+
+  if (!text.trim()) {
+    return {
+      ok: false,
+      error: `"${file.name}" has no selectable text. It may be a scanned document — OCR support is planned but not available yet.`,
+    };
+  }
+
+  const truncated = text.length > MAX_FILE_CHARS;
+  return {
+    ok: true,
+    name: file.name,
+    mime: file.type || "application/pdf",
     size: file.size,
     text: truncated ? text.slice(0, MAX_FILE_CHARS) : text,
     truncated,

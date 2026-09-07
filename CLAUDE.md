@@ -44,7 +44,7 @@ Monorepo for an open-source, canvas-based multimodal content workspace.
 ---
 
 ## 3. Tech Stack & Key Libraries
-- **Web:** Next.js (App Router), `@xyflow/react` (or `tldraw`), `zustand`, `lucide-react`, `tailwindcss`. No `openai` SDK — the web tier never talks to a model.
+- **Web:** Next.js (App Router), `@xyflow/react` (or `tldraw`), `zustand`, `lucide-react`, `tailwindcss`, `pdfjs-dist` (client-side PDF text extraction). No `openai` SDK — the web tier never talks to a model.
 - **Engine:** `fastapi`, `uvicorn`, `yt-dlp`, `youtube-transcript-api`, `faster-whisper`, `ffmpeg-python`, `pydantic`, `openai` (as the client for the *local* server).
 - **AI / LLM:** any OpenAI-compatible server on localhost, addressed via
   `LOCAL_LLM_BASE_URL`; see §6D.
@@ -146,7 +146,7 @@ LOCAL_LLM_PROMPT_SUFFIX=/no_think
 * Canvas nodes:
 1. `MediaSourceNode`: Displays the video thumbnail at its native aspect ratio (portrait clips no longer crop), plus platform badge, original URL, and a Details disclosure for author, date and views.
 2. `TranscriptNode`: Displays editable raw text extracted from the media.
-3. `FileNode`: Uploaded text file (toolbar **File**). Preview is type-specific (CSV/TSV as a table, markdown as markdown, JSON pretty-printed, HTML in a sandboxed iframe, everything else as a monospace dump). Pencil toggles a raw editor; that text is what the model sees, same as a transcript.
+3. `FileNode`: Uploaded text file (toolbar **File**). Preview is type-specific (CSV/TSV as a table, markdown as markdown, JSON pretty-printed, HTML in a sandboxed iframe, PDF as extracted text, everything else as a monospace dump). Pencil toggles a raw editor; that text is what the model sees, same as a transcript. PDFs are parsed client-side with `pdfjs-dist`; scanned/image-only PDFs are rejected with a message (no OCR yet). Max upload 5 MB / 300k chars.
 4. `GenerationNode`: Chat interface with a scrollable thread, bottom composer (Enter to send, Shift+Enter for a newline), and drag-to-resize via xyflow `NodeResizer`. Toolbar and vacant-handle actions are labeled **Chat**. Each node keeps its own message history; follow-ups are sent as `history` on `POST /llm`.
 
 

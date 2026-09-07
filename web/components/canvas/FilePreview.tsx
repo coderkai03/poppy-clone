@@ -26,6 +26,13 @@ export function FilePreview({ name, mime, text }: { name: string; mime: string; 
   }
   if (kind === "json") return <JsonPreview text={text} />;
   if (kind === "html") return <HtmlPreview text={text} />;
+  if (kind === "pdf") {
+    return (
+      <pre className={`${PREVIEW_FRAME} px-2.5 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap`}>
+        {text}
+      </pre>
+    );
+  }
 
   return (
     <pre className={`${PREVIEW_FRAME} px-2.5 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap`}>

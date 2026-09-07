@@ -278,7 +278,7 @@ deliberately differs:
 ## Limitations
 
 - Single user, no server-side persistence — the canvas lives in `localStorage`.
-- File uploads are text-only (`.txt`, `.md`, `.csv`, `.json`, `.html`, `.xml`, …). CSV/markdown/JSON/HTML get a formatted preview; the pencil editor is still the source of truth for the model.
+- File uploads support text files and PDFs (up to 5 MB). CSV/markdown/JSON/HTML/PDF get formatted previews; the pencil editor is still the source of truth for the model. Scanned/image-only PDFs are not supported yet (no OCR).
 - Generation requires a local model server to be running; the canvas shows an actionable
   502 on the node if it is not.
 - Transcripts are truncated to 24k characters before being sent. On an integrated GPU this
