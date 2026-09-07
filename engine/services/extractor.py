@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import shutil
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
@@ -97,7 +98,7 @@ def fetch_youtube_captions(video_id: str) -> Optional[Tuple[str, Optional[str]]]
 
 
 def probe_metadata(url: str) -> Dict[str, Any]:
-    """Reads title/duration/thumbnail without downloading any media stream."""
+    """Reads title/duration/thumbnail/author without downloading any media stream."""
     try:
         with YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -106,6 +107,60 @@ def probe_metadata(url: str) -> Dict[str, Any]:
         # Metadata is decoration; never fail an otherwise-good transcript over it.
         logger.info("Metadata probe failed for %s (%s)", url, type(error).__name__)
         return {}
+
+
+def _first_text(*values: Any) -> Optional[str]:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _as_int(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer() and value >= 0:
+        return int(value)
+    return None
+
+
+def _published_at(info: Dict[str, Any]) -> Optional[str]:
+    """Normalises yt-dlp's YYYYMMDD / unix timestamp into an ISO date."""
+    upload_date = info.get("upload_date")
+    if isinstance(upload_date, str) and len(upload_date) == 8 and upload_date.isdigit():
+        return f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+
+    for key in ("timestamp", "release_timestamp"):
+        stamp = info.get(key)
+        if isinstance(stamp, (int, float)) and stamp > 0:
+            return datetime.fromtimestamp(stamp, tz=timezone.utc).date().isoformat()
+
+    return None
+
+
+def media_details(info: Dict[str, Any]) -> Dict[str, Any]:
+    """Picks author / date / views out of a yt-dlp info dict.
+
+    Field names vary by extractor (YouTube uses `channel` + `view_count`,
+    TikTok often `uploader` + `play_count`), so this tries the common aliases
+    rather than assuming one platform.
+    """
+    views = _as_int(info.get("view_count"))
+    if views is None:
+        views = _as_int(info.get("play_count"))
+
+    return {
+        "author": _first_text(
+            info.get("channel"),
+            info.get("uploader"),
+            info.get("creator"),
+            info.get("artist"),
+        ),
+        "published_at": _published_at(info),
+        "view_count": views,
+    }
 
 
 def _require_ffmpeg() -> None:
@@ -204,6 +259,7 @@ def ingest_url(url: str) -> IngestResponse:
                     duration=metadata.get("duration"),
                     language=language,
                     thumbnail=metadata.get("thumbnail"),
+                    **media_details(metadata),
                 )
 
     text, language, metadata = transcribe_via_whisper(url)
@@ -222,4 +278,5 @@ def ingest_url(url: str) -> IngestResponse:
         duration=metadata.get("duration"),
         language=language,
         thumbnail=metadata.get("thumbnail"),
+        **media_details(metadata),
     )

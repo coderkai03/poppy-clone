@@ -43,8 +43,8 @@ body {
   border: 2px solid var(--background);
 }
 
-/* Vacant transcript source: plus expands and fills on any hover of its surface. */
-.react-flow__handle.transcript-source-vacant {
+/* Vacant source: plus expands and fills on hover. */
+.react-flow__handle.connector-vacant {
   display: flex;
   width: 18px;
   height: 18px;
@@ -65,19 +65,20 @@ body {
     border-color 120ms ease;
 }
 
-.react-flow__handle.transcript-source-vacant * {
+.react-flow__handle.connector-vacant *,
+.react-flow__handle.connector-live * {
   pointer-events: none;
 }
 
-.react-flow__handle.transcript-source-vacant svg {
+.react-flow__handle.connector-vacant svg {
   width: 10px;
   height: 10px;
   pointer-events: none;
   transition: width 150ms ease, height 150ms ease;
 }
 
-.react-flow__handle.transcript-source-vacant:hover,
-.react-flow__handle.transcript-source-vacant.transcript-source-vacant-hot {
+.react-flow__handle.connector-vacant:hover,
+.react-flow__handle.connector-vacant.connector-vacant-hot {
   width: 28px;
   height: 28px;
   background: var(--accent);
@@ -85,10 +86,45 @@ body {
   color: #fff;
 }
 
-.react-flow__handle.transcript-source-vacant:hover svg,
-.react-flow__handle.transcript-source-vacant.transcript-source-vacant-hot svg {
+.react-flow__handle.connector-vacant:hover svg,
+.react-flow__handle.connector-vacant.connector-vacant-hot svg {
   width: 14px;
   height: 14px;
+}
+
+.react-flow__handle.connector-live {
+  pointer-events: all;
+}
+
+.connector-x {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--background);
+  border-radius: 100%;
+  background: #f43f5e;
+  color: #fff;
+  cursor: pointer;
+  transform: translateY(-50%);
+  box-shadow: 0 0 0 1px rgb(244 63 94 / 0.35);
+}
+
+.connector-x.right {
+  left: 100%;
+  margin-left: 8px;
+}
+
+.connector-x.left {
+  right: 100%;
+  margin-right: 8px;
+}
+
+.connector-x:hover {
+  background: #fb7185;
 }
 
 .react-flow__edge-path {
@@ -199,4 +235,67 @@ body {
   padding-left: 0.75em;
   color: var(--muted);
   margin: 0.6em 0;
+}
+
+.react-flow__node-generation {
+  padding: 0;
+}
+.react-flow__node-generation .chat-resize-handle {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--background);
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.react-flow__node-generation .chat-resize-line {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.react-flow__node-generation .chat-resize-line.left {
+  pointer-events: none;
+  border-color: transparent;
+}
+
+.react-flow__node-generation.selected .chat-resize-line:not(.left) {
+  border-color: var(--accent);
+}
+
+.file-sheet {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.file-sheet th,
+.file-sheet td {
+  border: 1px solid var(--border);
+  padding: 0.28em 0.55em;
+  text-align: left;
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-sheet th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-raised);
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.file-sheet tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-raised) 55%, transparent);
+}
+
+.media-details > summary {
+  list-style: none;
+}
+
+.media-details > summary::-webkit-details-marker {
+  display: none;
 }

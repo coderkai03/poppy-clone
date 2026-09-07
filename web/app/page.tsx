@@ -11,7 +11,7 @@ const STEPS = [
   },
   {
     title: "Synthesise",
-    body: "Click Chat on a transcript (or drag an edge) and stream markdown notes from the local model.",
+    body: "Click Chat on a transcript or file (or drag an edge). Type in the chat node and stream a markdown reply.",
   },
 ];
 

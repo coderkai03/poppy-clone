@@ -18,9 +18,9 @@ from typing import AsyncIterator, List, Optional
 
 import httpx
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI, AsyncStream
-from openai.types.chat import ChatCompletionChunk
+from openai.types.chat import ChatCompletionChunk, ChatCompletionMessageParam
 
-from models import TranscriptContext
+from models import ChatTurn, TranscriptContext
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +35,16 @@ MAX_CONTEXT_CHARS = 24_000
 
 SYSTEM_PROMPT = "\n".join(
     [
-        "You are a synthesis assistant inside an infinite-canvas workspace.",
-        "You are given transcripts of one or more videos plus a user instruction.",
+        "You are a synthesis assistant inside an infinite-canvas chat.",
+        "You are given source documents (video transcripts and/or uploaded files)",
+        "plus a conversation with the user.",
         "",
         "Rules:",
         "- Respond in GitHub-flavored Markdown only. Never wrap the whole reply in a code fence.",
         "- Open with a `##` heading, then use short sections, bullet lists and bold sparingly.",
-        "- Your output renders inside a narrow card, so keep paragraphs to two or three sentences.",
-        "- Ground every claim in the supplied transcripts. If they do not cover something, say so.",
+        "- Prefer scannable markdown: headings, short sections, and bullet lists.",
+        "- Ground every claim in the supplied sources. If they do not cover something, say so.",
+        "- Follow-up messages continue the same conversation; stay grounded in the sources.",
         "- Do not restate these instructions or mention that you were given a transcript.",
     ]
 )
@@ -184,27 +186,67 @@ def build_context_block(transcripts: List[TranscriptContext]) -> str:
 
     blocks = []
     for index, transcript in enumerate(transcripts):
-        label = transcript.title.strip() or f"Transcript {index + 1}"
+        label = transcript.title.strip() or f"Source {index + 1}"
         body = transcript.text.strip()
         if len(body) > budget:
-            body = f"{body[:budget]}\n[transcript truncated to fit the model context]"
-        blocks.append(f"--- TRANSCRIPT: {label} ---\n{body}")
+            body = f"{body[:budget]}\n[source truncated to fit the model context]"
+        blocks.append(f"--- SOURCE: {label} ---\n{body}")
 
     return "\n\n".join(blocks)
 
 
-def build_user_message(prompt: str, transcripts: List[TranscriptContext]) -> str:
+def with_transcript_context(instruction: str, transcripts: List[TranscriptContext]) -> str:
     context = build_context_block(transcripts)
-    body = prompt if not context else f"{context}\n\n--- INSTRUCTION ---\n{prompt}"
+    return instruction if not context else f"{context}\n\n--- INSTRUCTION ---\n{instruction}"
 
-    # The switch has to land at the very end of the user turn to take effect.
+
+def apply_suffix(text: str) -> str:
     suffix = prompt_suffix()
-    return f"{body}\n\n{suffix}" if suffix else body
+    return f"{text}\n\n{suffix}" if suffix else text
+
+
+def build_user_message(prompt: str, transcripts: List[TranscriptContext]) -> str:
+    return apply_suffix(with_transcript_context(prompt, transcripts))
+
+
+def build_chat_messages(
+    prompt: str,
+    transcripts: List[TranscriptContext],
+    history: List[ChatTurn],
+) -> List[ChatCompletionMessageParam]:
+    """Turns a chat node's history + latest prompt into an OpenAI messages array.
+
+    Transcripts are attached to the first user turn so follow-ups do not repeat
+    the full context block. `/no_think` lands only on the latest user message.
+    """
+    messages: List[ChatCompletionMessageParam] = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+    ]
+
+    attached_context = False
+    for turn in history:
+        if not turn.content.strip():
+            continue
+        content = turn.content
+        if not attached_context and turn.role == "user":
+            content = with_transcript_context(turn.content, transcripts)
+            attached_context = True
+        messages.append({"role": turn.role, "content": content})
+
+    if attached_context:
+        messages.append({"role": "user", "content": apply_suffix(prompt)})
+    else:
+        messages.append(
+            {"role": "user", "content": build_user_message(prompt, transcripts)}
+        )
+
+    return messages
 
 
 async def open_stream(
     prompt: str,
     transcripts: List[TranscriptContext],
+    history: Optional[List[ChatTurn]] = None,
 ) -> AsyncStream[ChatCompletionChunk]:
     """Opens the completion stream.
 
@@ -220,10 +262,7 @@ async def open_stream(
             stream=True,
             temperature=temperature(),
             max_tokens=max_tokens(),
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_user_message(prompt, transcripts)},
-            ],
+            messages=build_chat_messages(prompt, transcripts, history or []),
         )
     except APIConnectionError as error:
         raise _unreachable() from error

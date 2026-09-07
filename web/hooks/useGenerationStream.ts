@@ -2,6 +2,7 @@
 
 import { useCallback, useRef } from "react";
 
+import { newNodeId, type GenerationNode } from "@/lib/canvas";
 import { isApiError } from "@/lib/schemas";
 import { useCanvasStore } from "@/hooks/useCanvasStore";
 
@@ -27,6 +28,11 @@ function parseFrame(frame: string): SseFrame | null {
   return data ? { event, data } : null;
 }
 
+function generationNode(nodeId: string): GenerationNode | null {
+  const node = useCanvasStore.getState().nodes.find((entry) => entry.id === nodeId);
+  return node?.type === "generation" ? node : null;
+}
+
 export function useGenerationStream() {
   const getInboundTranscripts = useCanvasStore((state) => state.getInboundTranscripts);
   const updateGenerationNode = useCanvasStore((state) => state.updateGenerationNode);
@@ -37,11 +43,15 @@ export function useGenerationStream() {
   const controllers = useRef(new Map<string, AbortController>());
 
   const generate = useCallback(
-    async (nodeId: string, prompt: string) => {
-      if (!prompt.trim()) {
+    async (nodeId: string) => {
+      const node = generationNode(nodeId);
+      if (!node || node.data.status === "streaming") return;
+
+      const prompt = (node.data.prompt ?? "").trim();
+      if (!prompt) {
         updateGenerationNode(nodeId, {
           status: "error",
-          error: "Enter a prompt first.",
+          error: "Type a message first.",
         });
         return;
       }
@@ -50,33 +60,59 @@ export function useGenerationStream() {
       if (transcripts.length === 0) {
         updateGenerationNode(nodeId, {
           status: "error",
-          error: "Connect a transcript node to this node first.",
+          error: "Connect a transcript or file to this chat first.",
         });
         return;
       }
 
-      // Replacing an existing generation starts from a clean slate.
+      const previousMessages = node.data.messages ?? [];
+      const userMessage = {
+        id: newNodeId("msg"),
+        role: "user" as const,
+        content: prompt,
+      };
+      const assistantMessage = {
+        id: newNodeId("msg"),
+        role: "assistant" as const,
+        content: "",
+      };
+
       updateGenerationNode(nodeId, {
+        prompt: "",
         status: "streaming",
-        markdown: "",
         error: null,
+        messages: [...previousMessages, userMessage, assistantMessage],
       });
 
       const controller = new AbortController();
       controllers.current.set(nodeId, controller);
 
+      const restoreDraft = () => {
+        updateGenerationNode(nodeId, {
+          prompt,
+          status: "error",
+          messages: previousMessages,
+        });
+      };
+
       try {
         const response = await fetch("/api/llm", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ prompt, transcripts }),
+          body: JSON.stringify({
+            prompt,
+            transcripts,
+            history: previousMessages
+              .filter((message) => message.content.trim())
+              .map(({ role, content }) => ({ role, content })),
+          }),
           signal: controller.signal,
         });
 
         if (!response.ok || !response.body) {
           const payload: unknown = await response.json().catch(() => null);
+          restoreDraft();
           updateGenerationNode(nodeId, {
-            status: "error",
             error: isApiError(payload)
               ? payload.error
               : `Generation failed (${response.status}).`,
@@ -136,12 +172,27 @@ export function useGenerationStream() {
       } catch (error) {
         // An abort is a user action, so keep whatever tokens already landed.
         if (error instanceof Error && error.name === "AbortError") {
+          const latest = generationNode(nodeId);
+          const last = latest?.data.messages.at(-1);
+          if (
+            latest &&
+            last?.role === "assistant" &&
+            !last.content.trim()
+          ) {
+            updateGenerationNode(nodeId, {
+              status: "idle",
+              error: null,
+              messages: latest.data.messages.slice(0, -2),
+              prompt,
+            });
+            return;
+          }
           updateGenerationNode(nodeId, { status: "done", error: null });
           return;
         }
 
+        restoreDraft();
         updateGenerationNode(nodeId, {
-          status: "error",
           error: "Network request to /api/llm failed.",
         });
       } finally {

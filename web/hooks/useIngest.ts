@@ -39,14 +39,26 @@ export function useIngest() {
         }
 
         const result = payload as IngestResult;
+        const nextThumb = result.thumbnail ?? parsed?.thumbnailUrl ?? null;
+        const existing = useCanvasStore.getState().nodes.find(
+          (node) => node.id === mediaNodeId,
+        );
+        const sameThumb =
+          existing?.type === "mediaSource" &&
+          existing.data.thumbnailUrl === nextThumb;
 
         updateMediaNode(mediaNodeId, {
           status: "ready",
           error: null,
           title: result.title,
           duration: result.duration,
-          // Prefer our own derived thumbnail; fall back to whatever yt-dlp found.
-          thumbnailUrl: parsed?.thumbnailUrl ?? result.thumbnail,
+          author: result.author ?? null,
+          publishedAt: result.published_at ?? null,
+          viewCount: result.view_count ?? null,
+          thumbnailUrl: nextThumb,
+          ...(sameThumb
+            ? {}
+            : { thumbnailNaturalWidth: null, thumbnailNaturalHeight: null }),
         });
 
         addTranscriptNode(mediaNodeId, result);

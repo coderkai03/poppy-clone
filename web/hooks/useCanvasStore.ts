@@ -13,8 +13,13 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
+  GENERATION_NODE_HEIGHT,
+  GENERATION_NODE_WIDTH,
+  MEDIA_NODE_MAX_WIDTH,
   newNodeId,
+  normalizeGenerationData,
   type AppNode,
+  type FileNodeData,
   type GenerationNodeData,
   type MediaSourceNodeData,
   type TranscriptNodeData,
@@ -37,23 +42,31 @@ interface CanvasState {
   addMediaNode: (url: string, parsed: ParsedSource) => string;
   /** Creates a transcript node already wired to the media node it came from. */
   addTranscriptNode: (mediaNodeId: string, result: IngestResult) => string;
-  /** Toolbar: unwired. Transcript Chat: already connected to that source. */
-  addGenerationNode: (sourceTranscriptId?: string) => string;
+  addFileNode: (file: FileNodeData) => string;
+  /** Toolbar: unwired. Transcript/file Chat: already connected to that source. */
+  addGenerationNode: (sourceId?: string) => string;
 
   updateMediaNode: (id: string, patch: Partial<MediaSourceNodeData>) => void;
   updateTranscriptNode: (id: string, patch: Partial<TranscriptNodeData>) => void;
+  updateFileNode: (id: string, patch: Partial<FileNodeData>) => void;
   updateGenerationNode: (id: string, patch: Partial<GenerationNodeData>) => void;
   appendGenerationMarkdown: (id: string, chunk: string) => void;
 
   removeNode: (id: string) => void;
+  removeEdge: (edgeId: string) => void;
   clearCanvas: () => void;
   getInboundTranscripts: (generationNodeId: string) => TranscriptContext[];
 }
 
 /** Stacks new root-column nodes downward so they never land on top of each other. */
 function nextRootPosition(nodes: AppNode[]): { x: number; y: number } {
-  const rootNodes = nodes.filter((node) => node.type === "mediaSource");
-  return { x: 80, y: 80 + rootNodes.length * 260 };
+  const rootNodes = nodes.filter(
+    (node) => node.type === "mediaSource" || node.type === "file",
+  );
+  if (rootNodes.length === 0) return { x: 80, y: 80 };
+  const last = rootNodes[rootNodes.length - 1];
+  const lastHeight = last.measured?.height ?? last.height ?? 220;
+  return { x: 80, y: last.position.y + lastHeight + 40 };
 }
 
 function patchNodeData(
@@ -83,17 +96,34 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       /**
-       * CLAUDE.md 6C: only a transcript may feed a generation node, since that
-       * edge is what passes transcript context into the prompt payload.
+       * Context sources: transcript or file → chat. Media cards still feed
+       * transcripts, so that edge is allowed too (needed after a disconnect).
        */
       onConnect: (connection) => {
         const { nodes, edges } = get();
         const source = nodes.find((node) => node.id === connection.source);
         const target = nodes.find((node) => node.id === connection.target);
+        if (!source || !target) return;
 
-        if (source?.type !== "transcript" || target?.type !== "generation") return;
+        const toChat =
+          (source.type === "transcript" || source.type === "file") &&
+          target.type === "generation";
+        const mediaToTranscript =
+          source.type === "mediaSource" && target.type === "transcript";
+        if (!toChat && !mediaToTranscript) return;
 
-        set({ edges: addEdge({ ...connection, animated: true }, edges) });
+        const duplicate = edges.some(
+          (edge) =>
+            edge.source === connection.source && edge.target === connection.target,
+        );
+        if (duplicate) return;
+
+        set({
+          edges: addEdge(
+            { ...connection, animated: toChat },
+            edges,
+          ),
+        });
       },
 
       addMediaNode: (url, parsed) => {
@@ -102,8 +132,13 @@ export const useCanvasStore = create<CanvasState>()(
           url,
           platform: parsed.platform,
           thumbnailUrl: parsed.thumbnailUrl,
+          thumbnailNaturalWidth: null,
+          thumbnailNaturalHeight: null,
           title: null,
           duration: null,
+          author: null,
+          publishedAt: null,
+          viewCount: null,
           status: "loading",
           error: null,
         };
@@ -126,8 +161,10 @@ export const useCanvasStore = create<CanvasState>()(
       addTranscriptNode: (mediaNodeId, result) => {
         const id = newNodeId("transcript");
         const media = get().nodes.find((node) => node.id === mediaNodeId);
+        const mediaWidth =
+          media?.measured?.width ?? media?.width ?? MEDIA_NODE_MAX_WIDTH + 32;
         const position = media
-          ? { x: media.position.x + NODE_WIDTH + COLUMN_GAP, y: media.position.y }
+          ? { x: media.position.x + mediaWidth + COLUMN_GAP, y: media.position.y }
           : nextRootPosition(get().nodes);
 
         const data: TranscriptNodeData = {
@@ -155,16 +192,35 @@ export const useCanvasStore = create<CanvasState>()(
         return id;
       },
 
-      addGenerationNode: (sourceTranscriptId) => {
+      addFileNode: (file) => {
+        const id = newNodeId("file");
+        const position = nextRootPosition(get().nodes);
+
+        set((state) => ({
+          nodes: [
+            ...state.nodes,
+            {
+              id,
+              type: "file",
+              position,
+              data: file,
+            } satisfies AppNode,
+          ],
+        }));
+
+        return id;
+      },
+
+      addGenerationNode: (sourceId) => {
         const id = newNodeId("generation");
         const { nodes } = get();
-        const source = sourceTranscriptId
-          ? nodes.find((node) => node.id === sourceTranscriptId)
+        const source = sourceId
+          ? nodes.find((node) => node.id === sourceId)
           : undefined;
 
         const data: GenerationNodeData = {
           prompt: "",
-          markdown: "",
+          messages: [],
           status: "idle",
           error: null,
         };
@@ -187,12 +243,12 @@ export const useCanvasStore = create<CanvasState>()(
           ).length;
           position = {
             x: rightmost + NODE_WIDTH + COLUMN_GAP,
-            y: 80 + generationCount * 320,
+            y: 80 + generationCount * (GENERATION_NODE_HEIGHT + 40),
           };
         }
 
         const wired =
-          source?.type === "transcript"
+          source?.type === "transcript" || source?.type === "file"
             ? {
                 id: source.id + "->" + id,
                 source: source.id,
@@ -209,6 +265,12 @@ export const useCanvasStore = create<CanvasState>()(
               type: "generation",
               position,
               data,
+              width: GENERATION_NODE_WIDTH,
+              height: GENERATION_NODE_HEIGHT,
+              style: {
+                width: GENERATION_NODE_WIDTH,
+                height: GENERATION_NODE_HEIGHT,
+              },
             } satisfies AppNode,
           ],
           edges: wired ? [...state.edges, wired] : state.edges,
@@ -229,6 +291,12 @@ export const useCanvasStore = create<CanvasState>()(
         }));
       },
 
+      updateFileNode: (id, patch) => {
+        set((state) => ({
+          nodes: patchNodeData(state.nodes, id, "file", patch),
+        }));
+      },
+
       updateGenerationNode: (id, patch) => {
         set((state) => ({
           nodes: patchNodeData(state.nodes, id, "generation", patch),
@@ -239,9 +307,18 @@ export const useCanvasStore = create<CanvasState>()(
         set((state) => ({
           nodes: state.nodes.map((node) => {
             if (node.id !== id || node.type !== "generation") return node;
+            const messages = node.data.messages;
+            const last = messages[messages.length - 1];
+            if (!last || last.role !== "assistant") return node;
             return {
               ...node,
-              data: { ...node.data, markdown: node.data.markdown + chunk },
+              data: {
+                ...node.data,
+                messages: [
+                  ...messages.slice(0, -1),
+                  { ...last, content: last.content + chunk },
+                ],
+              },
             };
           }),
         }));
@@ -256,6 +333,12 @@ export const useCanvasStore = create<CanvasState>()(
         }));
       },
 
+      removeEdge: (edgeId) => {
+        set((state) => ({
+          edges: state.edges.filter((edge) => edge.id !== edgeId),
+        }));
+      },
+
       clearCanvas: () => set({ nodes: [], edges: [] }),
 
       getInboundTranscripts: (generationNodeId) => {
@@ -264,12 +347,16 @@ export const useCanvasStore = create<CanvasState>()(
           .filter((edge) => edge.target === generationNodeId)
           .map((edge) => edge.source);
 
-        return nodes
-          .filter(
-            (node): node is Extract<AppNode, { type: "transcript" }> =>
-              node.type === "transcript" && sourceIds.includes(node.id),
-          )
-          .map((node) => ({ title: node.data.title, text: node.data.text }));
+        return nodes.flatMap((node): TranscriptContext[] => {
+          if (!sourceIds.includes(node.id)) return [];
+          if (node.type === "transcript") {
+            return [{ title: node.data.title, text: node.data.text }];
+          }
+          if (node.type === "file") {
+            return [{ title: node.data.name, text: node.data.text }];
+          }
+          return [];
+        }).filter((entry) => entry.text.trim().length > 0);
       },
     }),
     {
@@ -295,13 +382,29 @@ export const useCanvasStore = create<CanvasState>()(
             };
           }
 
-          if (node.type === "generation" && node.data.status === "streaming") {
+          if (node.type === "generation") {
+            const data = normalizeGenerationData(
+              node.data as GenerationNodeData & { markdown?: string },
+            );
+            const last = data.messages[data.messages.length - 1];
+            const interrupted = data.status === "streaming";
+            const hasReply =
+              last?.role === "assistant" && last.content.trim().length > 0;
+
             return {
               ...node,
+              width: node.width ?? GENERATION_NODE_WIDTH,
+              height: node.height ?? GENERATION_NODE_HEIGHT,
+              style: {
+                ...node.style,
+                width: node.width ?? node.style?.width ?? GENERATION_NODE_WIDTH,
+                height:
+                  node.height ?? node.style?.height ?? GENERATION_NODE_HEIGHT,
+              },
               data: {
-                ...node.data,
-                status: node.data.markdown.trim() ? "done" : "idle",
-                error: null,
+                ...data,
+                status: interrupted ? (hasReply ? "done" : "idle") : data.status,
+                error: interrupted ? null : data.error,
               },
             };
           }

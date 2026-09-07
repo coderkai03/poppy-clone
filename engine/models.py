@@ -20,6 +20,9 @@ class IngestResponse(BaseModel):
     duration: Optional[float] = None
     language: Optional[str] = None
     thumbnail: Optional[str] = None
+    author: Optional[str] = None
+    published_at: Optional[str] = None
+    view_count: Optional[int] = None
 
 
 class TranscriptContext(BaseModel):
@@ -29,9 +32,17 @@ class TranscriptContext(BaseModel):
     text: str
 
 
+class ChatTurn(BaseModel):
+    """One prior message in a chat node, excluding the current prompt."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1)
+
+
 class LlmRequest(BaseModel):
-    prompt: str = Field(min_length=1, description="The user's instruction.")
+    prompt: str = Field(min_length=1, description="The user's latest instruction.")
     transcripts: List[TranscriptContext] = Field(min_length=1)
+    history: List[ChatTurn] = Field(default_factory=list)
 
     @field_validator("prompt")
     @classmethod

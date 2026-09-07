@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Expected { prompt: string, transcripts: { title: string, text: string }[] }.",
+          "Expected { prompt: string, transcripts: { title: string, text: string }[], history?: { role, content }[] }.",
       },
       { status: 400 },
     );
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
   if (body.transcripts.length === 0) {
     return NextResponse.json(
-      { error: "Connect at least one transcript node before generating." },
+      { error: "Connect at least one transcript or file before generating." },
       { status: 400 },
     );
   }

@@ -143,13 +143,14 @@ LOCAL_LLM_PROMPT_SUFFIX=/no_think
 
 ### C. Canvas State Management
 
-* Canvas nodes must support 3 core types:
-1. `MediaSourceNode`: Displays video thumbnail, platform badge, and original URL.
+* Canvas nodes:
+1. `MediaSourceNode`: Displays the video thumbnail at its native aspect ratio (portrait clips no longer crop), plus platform badge, original URL, and a Details disclosure for author, date and views.
 2. `TranscriptNode`: Displays editable raw text extracted from the media.
-3. `GenerationNode`: Displays markdown synthesis streamed from the local model. Toolbar and vacant-handle actions are labeled **Chat**.
+3. `FileNode`: Uploaded text file (toolbar **File**). Preview is type-specific (CSV/TSV as a table, markdown as markdown, JSON pretty-printed, HTML in a sandboxed iframe, everything else as a monospace dump). Pencil toggles a raw editor; that text is what the model sees, same as a transcript.
+4. `GenerationNode`: Chat interface with a scrollable thread, bottom composer (Enter to send, Shift+Enter for a newline), and drag-to-resize via xyflow `NodeResizer`. Toolbar and vacant-handle actions are labeled **Chat**. Each node keeps its own message history; follow-ups are sent as `history` on `POST /llm`.
 
 
-* Connecting an edge from `TranscriptNode` to a `GenerationNode` passes the transcript context into the prompt payload. A vacant transcript source handle shows a plus; hovering it reveals **Chat**, which creates a generation node already wired to that transcript. The toolbar **Chat** button creates an unwired generation node.
+* Connecting an edge from a `TranscriptNode` or `FileNode` to a `GenerationNode` passes that node's text into the prompt payload. A vacant source handle shows a plus; hovering it reveals **Chat**, which creates a generation node already wired to that source. The toolbar **Chat** button creates an unwired generation node. Hovering a connected handle reveals an **X** that removes that port's edges. Type in the bottom composer and press Enter (or the send button) to stream a reply; later messages in that node include prior turns.
 
 ### D. Local LLM Guidelines (`engine/services/llm.py`)
 

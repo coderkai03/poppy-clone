@@ -18,13 +18,13 @@ paste URL → MediaSourceNode
            engine: YouTube captions? → return immediately
                    otherwise → yt-dlp audio (128kbps mp3) → faster-whisper
               ↓
-           TranscriptNode  (editable)
+           TranscriptNode  (editable)     FileNode  (upload)
               ↓  drag an edge, or Chat on a vacant source handle
-           GenerationNode  (Chat)
+           GenerationNode  (Chat — thread + composer, drag-to-resize)
               ↓  POST /api/llm  (proxy, keeps the secret server-side)
            engine: POST /llm → local model server (:1234) → GPU
               ↓  SSE stream, piped straight through
-           markdown renders token by token
+           assistant reply streams into the chat thread
 ```
 
 Canvas state lives in `localStorage`, so a reload restores your nodes and edges.
@@ -278,7 +278,7 @@ deliberately differs:
 ## Limitations
 
 - Single user, no server-side persistence — the canvas lives in `localStorage`.
-- URL ingestion only; no file uploads.
+- File uploads are text-only (`.txt`, `.md`, `.csv`, `.json`, `.html`, `.xml`, …). CSV/markdown/JSON/HTML get a formatted preview; the pencil editor is still the source of truth for the model.
 - Generation requires a local model server to be running; the canvas shows an actionable
   502 on the node if it is not.
 - Transcripts are truncated to 24k characters before being sent. On an integrated GPU this

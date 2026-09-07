@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useRef, useState, type ChangeEvent } from "react";
+import { Plus, Trash2, Upload } from "lucide-react";
 
+import { FILE_ACCEPT, readTextUpload } from "@/lib/files";
 import { useCanvasStore } from "@/hooks/useCanvasStore";
 import { useIngest } from "@/hooks/useIngest";
 import { Button } from "@/components/ui/Button";
@@ -10,9 +11,11 @@ import { Button } from "@/components/ui/Button";
 export function Toolbar() {
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { ingest } = useIngest();
   const addGenerationNode = useCanvasStore((state) => state.addGenerationNode);
+  const addFileNode = useCanvasStore((state) => state.addFileNode);
   const clearCanvas = useCanvasStore((state) => state.clearCanvas);
   const nodeCount = useCanvasStore((state) => state.nodes.length);
 
@@ -26,6 +29,29 @@ export function Toolbar() {
 
     setError(null);
     setUrl("");
+  }
+
+  async function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = [...(event.target.files ?? [])];
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      const result = await readTextUpload(file);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      addFileNode({
+        name: result.name,
+        mime: result.mime,
+        size: result.size,
+        text: result.text,
+        truncated: result.truncated,
+      });
+    }
+
+    setError(null);
   }
 
   return (
@@ -51,6 +77,22 @@ export function Toolbar() {
         <Button variant="secondary" onClick={() => addGenerationNode()}>
           Chat
         </Button>
+        <Button
+          variant="secondary"
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className="size-3.5" />
+          File
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={FILE_ACCEPT}
+          multiple
+          className="hidden"
+          onChange={(event) => void handleFiles(event)}
+        />
         <Button
           variant="ghost"
           onClick={clearCanvas}

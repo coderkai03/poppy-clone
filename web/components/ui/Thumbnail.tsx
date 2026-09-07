@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Film } from "lucide-react";
 
 /**
@@ -9,12 +9,33 @@ import { Film } from "lucide-react";
  * A plain <img> is therefore the correct tool here, and it degrades to a
  * placeholder when the host refuses the request.
  */
-export function Thumbnail({ src, alt }: { src: string | null; alt: string }) {
+export function Thumbnail({
+  src,
+  alt,
+  width,
+  height,
+  onMeasured,
+}: {
+  src: string | null;
+  alt: string;
+  width: number;
+  height: number;
+  onMeasured?: (size: { width: number; height: number }) => void;
+}) {
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  const frame = { width, height };
 
   if (!src || failed) {
     return (
-      <div className="flex aspect-video w-full items-center justify-center rounded-md border border-border bg-background">
+      <div
+        className="flex items-center justify-center rounded-md border border-border bg-background"
+        style={frame}
+      >
         <Film className="size-6 text-muted" aria-hidden />
       </div>
     );
@@ -25,9 +46,19 @@ export function Thumbnail({ src, alt }: { src: string | null; alt: string }) {
     <img
       src={src}
       alt={alt}
+      width={width}
+      height={height}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
-      className="aspect-video w-full rounded-md border border-border object-cover"
+      onLoad={(event) => {
+        const image = event.currentTarget;
+        onMeasured?.({
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        });
+      }}
+      className="block rounded-md border border-border object-contain bg-background"
+      style={frame}
     />
   );
 }

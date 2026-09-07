@@ -8,11 +8,14 @@ import {
   Panel,
   ReactFlow,
   ReactFlowProvider,
+  type Connection,
+  type Edge,
   type NodeTypes,
 } from "@xyflow/react";
 import Link from "next/link";
 
 import { useCanvasStore } from "@/hooks/useCanvasStore";
+import { FileNode } from "@/components/canvas/FileNode";
 import { GenerationNode } from "@/components/canvas/GenerationNode";
 import { MediaSourceNode } from "@/components/canvas/MediaSourceNode";
 import { TranscriptNode } from "@/components/canvas/TranscriptNode";
@@ -22,6 +25,7 @@ import { Toolbar } from "@/components/canvas/Toolbar";
 const nodeTypes: NodeTypes = {
   mediaSource: MediaSourceNode,
   transcript: TranscriptNode,
+  file: FileNode,
   generation: GenerationNode,
 };
 
@@ -32,6 +36,19 @@ function Flow() {
   const onEdgesChange = useCanvasStore((state) => state.onEdgesChange);
   const onConnect = useCanvasStore((state) => state.onConnect);
 
+  function isValidConnection(connection: Connection | Edge): boolean {
+    const source = nodes.find((node) => node.id === connection.source);
+    const target = nodes.find((node) => node.id === connection.target);
+    if (!source || !target) return false;
+    if (target.type === "generation") {
+      return source.type === "transcript" || source.type === "file";
+    }
+    if (target.type === "transcript") {
+      return source.type === "mediaSource";
+    }
+    return false;
+  }
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -40,6 +57,7 @@ function Flow() {
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onConnect={onConnect}
+      isValidConnection={isValidConnection}
       fitView
       minZoom={0.2}
       maxZoom={1.8}
@@ -72,8 +90,8 @@ function Flow() {
       {nodes.length === 0 ? (
         <Panel position="top-center" className="!top-24">
           <p className="max-w-sm text-center text-sm text-muted">
-            Paste a video link above. You&apos;ll get a media card and a transcript,
-            then hover the transcript&apos;s plus and click Chat to synthesise it.
+            Paste a video link or upload a file. Wire a transcript or file into
+            Chat to synthesise it.
           </p>
         </Panel>
       ) : null}

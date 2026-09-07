@@ -18,6 +18,9 @@ export interface IngestResult {
   duration: number | null;
   language: string | null;
   thumbnail: string | null;
+  author?: string | null;
+  published_at?: string | null;
+  view_count?: number | null;
 }
 
 export interface TranscriptContext {
@@ -25,9 +28,16 @@ export interface TranscriptContext {
   text: string;
 }
 
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface LlmRequestBody {
   prompt: string;
   transcripts: TranscriptContext[];
+  /** Prior turns in this chat, excluding the current `prompt`. */
+  history: ChatTurn[];
 }
 
 export interface ApiError {
@@ -54,16 +64,41 @@ function isTranscriptContext(value: unknown): value is TranscriptContext {
   return typeof candidate.title === "string" && typeof candidate.text === "string";
 }
 
+function isChatTurn(value: unknown): value is ChatTurn {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { role?: unknown; content?: unknown };
+  return (
+    (candidate.role === "user" || candidate.role === "assistant") &&
+    typeof candidate.content === "string"
+  );
+}
+
 /** Runtime guard for the /api/llm body — route handlers receive untrusted JSON. */
 export function parseLlmRequestBody(value: unknown): LlmRequestBody | null {
   if (typeof value !== "object" || value === null) return null;
-  const candidate = value as { prompt?: unknown; transcripts?: unknown };
+  const candidate = value as {
+    prompt?: unknown;
+    transcripts?: unknown;
+    history?: unknown;
+  };
 
-  if (typeof candidate.prompt !== "string" || candidate.prompt.trim() === "") return null;
+  if (typeof candidate.prompt !== "string" || candidate.prompt.trim() === "") {
+    return null;
+  }
   if (!Array.isArray(candidate.transcripts)) return null;
   if (!candidate.transcripts.every(isTranscriptContext)) return null;
 
-  return { prompt: candidate.prompt, transcripts: candidate.transcripts };
+  if (candidate.history !== undefined) {
+    if (!Array.isArray(candidate.history) || !candidate.history.every(isChatTurn)) {
+      return null;
+    }
+  }
+
+  return {
+    prompt: candidate.prompt,
+    transcripts: candidate.transcripts,
+    history: candidate.history ?? [],
+  };
 }
 
 export function parseIngestRequestBody(value: unknown): IngestRequestBody | null {

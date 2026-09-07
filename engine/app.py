@@ -138,8 +138,9 @@ async def generate(request: LlmRequest) -> StreamingResponse:
     `done` event.
     """
     logger.info(
-        "Generation requested: %d transcript(s), prompt %d chars",
+        "Generation requested: %d transcript(s), %d prior turn(s), prompt %d chars",
         len(request.transcripts),
+        len(request.history),
         len(request.prompt),
     )
 
@@ -147,7 +148,11 @@ async def generate(request: LlmRequest) -> StreamingResponse:
     # dead model server return a real 502 instead of a 200 whose body is a
     # single error frame.
     try:
-        stream = await llm.open_stream(request.prompt, request.transcripts)
+        stream = await llm.open_stream(
+            request.prompt,
+            request.transcripts,
+            request.history,
+        )
     except llm.LlmUnavailable as error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
